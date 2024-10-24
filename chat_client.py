@@ -1,18 +1,24 @@
+import warnings
 import select
-import socket
 import sys
-import signal
 import argparse
 import threading
 import ssl
-from getpass import getpass
+import socket
 
 from utils import *
 
+# Default server host
 SERVER_HOST = 'localhost'
+# Global flag to stop threads when necessary
 stop_thread = False
 
+# Suppress Deprecation Warnings for the SSL version
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
 def get_and_send(client):
+    """ Handles sending messages from the client to the server. """
     while not stop_thread:
         data = sys.stdin.readline().strip()
         if data:
@@ -20,135 +26,141 @@ def get_and_send(client):
             sys.stdout.write(client.prompt)
             sys.stdout.flush()
 
-class ChatClient():
-    """ A command line chat client using select """
+
+def prompt_for_credentials(prompt_text):
+    """ Prompt the user for input using a given prompt text. """
+    sys.stdout.write(prompt_text)
+    sys.stdout.flush()
+    return sys.stdin.readline().strip()
+
+
+def main_menu():
+    """ Displays the main menu for the client and prompts for an option. """
+    print("\n1. Register a new user.\n2. Log in as an existing user.\n3. Exit the program.")
+    option = prompt_for_credentials("Choose your option (1, 2 or 3): ")
+    return option
+
+
+def registrate():
+    """ Handles user registration by prompting for a username and password. """
+    print("\nRegistration:")
+    username = prompt_for_credentials("Username: ")
+    password = prompt_for_credentials("Password: ")
+    return username, password
+
+
+def login():
+    """ Handles user login by prompting for a username and password. """
+    print("\nLog In")
+    username = prompt_for_credentials("Username: ")
+    password = prompt_for_credentials("Password: ")
+    return username, password
+
+
+class ChatClient:
+    """ A command-line chat client using SSL for secure communication and select for non-blocking IO."""
 
     def __init__(self, port, host=SERVER_HOST):
+        # Initialize the client with the given host and port
+        self.name = None
         self.connected = False
         self.host = host
         self.port = port
 
+        # Set up an SSL context with a specific protocol and cipher
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.context.set_ciphers('AES128-SHA')
 
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock = self.context.wrap_socket(self.sock, server_hostname=host)
-            
-            self.sock.connect((host, self.port))
-            print(f'Now connected to chat server@ port {self.port}')
+            # Connect to a secure socket
+            self.sock = self.context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_hostname=host)
+            self.sock.connect((host, port))
             self.connected = True
-            
-            action = input("Would you like to register or login? (register/login): ").strip().lower()
-            if action =='register':
-                print("Registration")
-                self.register()
-                login_choice = input("Would you like to login in now? (yes/no): ").strip().lower()
-                if login_choice == 'yes':
-                    self.login()
-                else:
-                    print("Exiting without loggin in.")
-                    self.cleanup()
-                    sys.exit(0)
+            print(f'Connected to chat server @ port {self.port}\n')
 
-            elif action == 'login':
-                print("Login")
-                self.login()
-            
-            else:
-                print("Invalid action. Exiting.")
-                self.cleanup()
-                sys.exit(0)
+            # Perform authentication
+            self.authenticate()
+            self.prompt = f'{self.name}(me): '
 
-        except socket.error as e:
+            # Start a new thread to handle sending messages
+            threading.Thread(target=get_and_send, args=(self,)).start()
+
+        except socket.error:
             print(f'Failed to connect to chat server @ port {self.port}')
             sys.exit(1)
 
-    def register(self):
-        while True:
-            self.name = input('Username: ')
-            self.password = getpass('Password: ')
-            send(self.sock, f'REGISTER: {self.name} {self.password}')
-            response = receive(self.sock)
+    def authenticate(self):
+        """ Authenticate the user by showing the main menu and processing registration or login. """
+        authenticated = False
+        print("Welcome to the chat server!")
 
-            if response == "SUCCESS":
-                print("Registration successful.")
-                break
+        while not authenticated:
+            option = main_menu()
+            if option == '1':
+                # Registration option
+                name, password = registrate()
+                send(self.sock, f'REGISTRATION: {name} {password}')
+                data = receive(self.sock)
+                print(f'\n{data}')
+
+            elif option == '2':
+                # Login option
+                name, password = login()
+                send(self.sock, f'LOGIN: {name} {password}')
+                data = receive(self.sock)
+                print(f'\n{data}\n')
+                # Check if the login was successful and set the authenticated flag
+                if data == 'Log In Success':
+                    authenticated = True
+                    self.name = name
+
+            elif option == '3':
+                # Exit option
+                print("\nExiting...")
+                self.sock.close()
+                sys.exit(0)
             else:
-                print("Failed: User already exists. Please try again.")
-
-
-    def login(self):
-        while True:
-            self.name = input('Username: ')
-            self.password = getpass('Password: ')
-            send(self.sock, f'LOGIN: {self.name} {self.password}')
-            response = receive(self.sock)
-
-            if response == "SUCCESS":
-                print("Login successful.")
-                send_msg = input("Would you like to send a message? (yes/no): ")
-                if send_msg == 'yes':
-                    self.prompt = f'{self.name}(me): '
-                    threading.Thread(target=get_and_send, args=(self,)).start()
-                    return
-
-            else:
-                print("Failed: Invalid credentials.")
-                # if input("Do you want to try again? (yes/no): ").lower() != "yes":
-                #     self.cleanup()
-                #     sys.exit(0)
-                # else:
-                #     continue
-
-            self.cleanup()
-            sys.exit(0)
-        
-        # if input("Would you like to send message? (yes/no): ").lower() != "yes":
-        #     self.cleanup()
-        #     sys.exit(0)
-
-        # self.prompt = f'{self.name}(me): '
-        # threading.Thread(target=get_and_send, args=(self,)).start()
-
+                # Invalid option
+                print("Invalid option. Please enter 1, 2 or 3.")
 
     def cleanup(self):
-        """ Close the connection """
+        """Clean up client resources by closing the socket."""
         self.sock.close()
 
     def run(self):
-        """ Chat client main loop """
+        """ Main client loop that listens for server messages and processes them. """
+        global stop_thread
         while self.connected:
             try:
                 sys.stdout.write(self.prompt)
                 sys.stdout.flush()
 
-                # Wait for input from stdin & socket
-                readable, writeable, exceptional = select.select(
-                    [self.sock], [], [])
-                
+                # Check for readable sockets using select
+                readable, writeable, exceptional = select.select([self.sock], [], [])
                 for sock in readable:
                     if sock == self.sock:
                         data = receive(self.sock)
                         if not data:
-                            print('Shutting down.')
+                            print('\nClient shutting down.')
                             self.connected = False
-                            break
                         else:
                             sys.stdout.write(data + '\n')
                             sys.stdout.flush()
 
             except KeyboardInterrupt:
-                print('Interrupted.')
-                self.connected = False
+                print("\nClient interrupted.")
+                stop_thread = True
                 self.cleanup()
                 break
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
+    # Command-line argument parsing for the server port
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', dest="port", type=int, required=True)
+    parser.add_argument('--port', action="store", dest="port", type=int, required=True)
     given_args = parser.parse_args()
     port = given_args.port
 
-    client = ChatClient(port=port)
-    client.run()
+    # Create a new chat client and run it
+    chat_client = ChatClient(port=port)
+    chat_client.run()
