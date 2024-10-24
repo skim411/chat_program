@@ -43,34 +43,54 @@ class ChatClient():
 
             if self.action == 'register':
                 print("Registration")
+                self.register()
             elif self.action == 'login':
                 print("Login")
-
-            self.name = input('Username: ')
-            self.password = getpass('Password: ')
-
-            if self.action == 'register':
-                send(self.sock, f'REGISTER: {self.name} {self.password}')
-            elif self.action == 'login':
-                send(self.sock, f'LOGIN: {self.name} {self.password}')
-
-            response = receive(self.sock)
-            if response == "SUCCESS":
-                print(f"{self.action.capitalize()} successful.")
-
-                if input("Would you like to send message? (yes/no): ").lower() != "yes":
-                    self.cleanup()
-                    sys.exit(0)
-
-                data = receive(self.sock)
-                addr = data.split('CLIENT: ')[1]
-                self.prompt = '[' + '@'.join((self.name, addr)) + ']> '
-
-                threading.Thread(target=get_and_send, args=(self,)).start()
+                self.login()
 
         except socket.error as e:
             print(f'Failed to connect to chat server @ port {self.port}')
             sys.exit(1)
+
+    def register(self):
+        while True:
+            self.name = input('Username: ')
+            self.password = getpass('Password: ')
+            send(self.sock, f'REGISTER: {self.name} {self.password}')
+            response = receive(self.sock)
+
+            if response == "SUCCESS":
+                print("Registration successful.")
+                break
+            else:
+                print("Failed: User already exists. Please try again.")
+
+
+    def login(self):
+        while True:
+            self.name = input('Username: ')
+            self.password = getpass('Password: ')
+            send(self.sock, f'LOGIN: {self.name} {self.password}')
+            response = receive(self.sock)
+
+            if response == "SUCCESS":
+                print("Login successful.")
+                break
+            else:
+                print("Failed: Invalid credentials. Please try again.")
+            
+            if input("Do you want to try again? (yes/no): ").lower() != "yes":
+                self.cleanup()
+                sys.exit(0)
+        
+        if input("Would you like to send message? (yes/no): ").lower() != "yes":
+            self.cleanup()
+            sys.exit(0)
+
+        data = receive(self.sock)
+        addr = data.split('CLIENT: ')[1]
+        self.prompt = '[' + '@'.join((self.name, addr)) + ']> '
+        threading.Thread(target=get_and_send, args=(self,)).start()
 
 
     def cleanup(self):

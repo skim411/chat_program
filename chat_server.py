@@ -105,8 +105,8 @@ class ChatServer(object):
                     self.clients += 1
                     send(client, f'CLIENT: {str(address[0])}')
                     inputs.append(client)
-
                     self.clientmap[client] = (address, username)
+
                     # Send joining information to other clients
                     msg = f'\n(Connected: New client ({self.clients}) from {self.get_client_name(client)})'
                     for output in self.outputs:
@@ -137,7 +137,6 @@ class ChatServer(object):
                             for output in self.outputs:
                                 send(output, msg)
                     except socket.error as e:
-                        # Remove
                         inputs.remove(sock)
                         self.outputs.remove(sock)
 
@@ -168,12 +167,10 @@ class ChatServer(object):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Socket Server Example')
-    # parser.add_argument('--name', action="store", dest="name", required=True)
     parser.add_argument('--port', action="store",
                         dest="port", type=int, required=True)
     given_args = parser.parse_args()
     port = given_args.port
-    # name = given_args.name
 
     server = ChatServer(port)
     server.run()
