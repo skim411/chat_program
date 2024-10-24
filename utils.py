@@ -3,6 +3,7 @@ import pickle
 import struct
 
 def send(channel, *args):
+    """ Send a message. """
     buffer = pickle.dumps(args)
     value = socket.htonl(len(buffer))
     size = struct.pack("L", value)
@@ -10,6 +11,7 @@ def send(channel, *args):
     channel.send(buffer)
 
 def receive(channel):
+    """ Receive a message. """
     size = struct.calcsize("L")
     size = channel.recv(size)
     try:
