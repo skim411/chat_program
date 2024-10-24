@@ -1,3 +1,4 @@
+import sqlite3
 import select
 import socket
 import sys
@@ -9,13 +10,24 @@ from utils import *
 
 SERVER_HOST = 'localhost'
 
+conn = sqlite3.connect('chat_users.db', check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    )
+''')
+conn.commit()
+
 
 class ChatServer(object):
     """ An example chat server using select """
     def __init__(self, port, backlog=5):
         self.clients = 0
         self.clientmap = {}
-        self.outputs = []  # list output sockets
+        self.outputs = []
 
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.context.load_cert_chain(certfile="cert.pem", keyfile="cert.pem")
@@ -31,6 +43,7 @@ class ChatServer(object):
         signal.signal(signal.SIGINT, self.sighandler)
         print(f'Server listening to port: {port} ...')
 
+
     def sighandler(self, signum, frame):
         """ Clean up client outputs"""
         print('Shutting down server...')
@@ -38,6 +51,7 @@ class ChatServer(object):
         for output in self.outputs:
             output.close()
         self.server.close()
+        conn.close()
 
 
     def get_client_name(self, client):
@@ -45,7 +59,8 @@ class ChatServer(object):
         info = self.clientmap[client]
         host, name = info[0][0], info[1]
         return '@'.join((name, host))
-    
+
+
     def run(self):
         inputs = [self.server]
         self.outputs = []
@@ -65,15 +80,33 @@ class ChatServer(object):
 
                     print(
                         f'Chat server: got connection {client.fileno()} from {address}')
-                    # Read the login name
-                    cname = receive(client).split('NAME: ')[1]
+                    
+                    data = receive(client)
+                    action, credentials = data.split(": ", 1)
+                    username, password = credentials.split()
+                    
+                    if action == "REGISTER":
+                        if self.register_user(username, password):
+                            send(client, "SUCCESS")
+                        else:
+                            send(client, "Failed: User already exists")
+                            client.close()
+                            continue
 
-                    # Compute client name and send back
+                    elif action == "LOGIN":
+                        if self.authenticate_user(username, password):
+                            send(client, "SUCCESS")
+                        else:
+                            send(client, "Failed: Invalid credentials")
+                            client.close()
+                            continue
+
+                    # Client successfully authenticated or registered
                     self.clients += 1
                     send(client, f'CLIENT: {str(address[0])}')
                     inputs.append(client)
 
-                    self.clientmap[client] = (address, cname)
+                    self.clientmap[client] = (address, username)
                     # Send joining information to other clients
                     msg = f'\n(Connected: New client ({self.clients}) from {self.get_client_name(client)})'
                     for output in self.outputs:
@@ -81,7 +114,6 @@ class ChatServer(object):
                     self.outputs.append(client)
 
                 else:
-                    # handle all other sockets
                     try:
                         data = receive(sock)
                         if data:
@@ -110,17 +142,38 @@ class ChatServer(object):
                         self.outputs.remove(sock)
 
         self.server.close()
+        conn.close()
+
+    def register_user(self, username, password):
+        """ Register a user by username and password """
+        try:
+            cursor.execute(
+                'INSERT INTO users (username, password) VALUES (?, ?)',
+                (username, password)
+            )
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def authenticate_user(self, username, password):
+        """ Authenticate a user by username and password """
+        cursor.execute(
+            'SELECT * FROM users WHERE username = ? AND password = ?',
+            (username, password)
+        )
+        user = cursor.fetchone()
+        return user is not None
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description='Socket Server Example with Select')
-    parser.add_argument('--name', action="store", dest="name", required=True)
+    parser = argparse.ArgumentParser(description='Socket Server Example')
+    # parser.add_argument('--name', action="store", dest="name", required=True)
     parser.add_argument('--port', action="store",
                         dest="port", type=int, required=True)
     given_args = parser.parse_args()
     port = given_args.port
-    name = given_args.name
+    # name = given_args.name
 
     server = ChatServer(port)
     server.run()
