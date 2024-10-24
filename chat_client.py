@@ -23,8 +23,7 @@ def get_and_send(client):
 class ChatClient():
     """ A command line chat client using select """
 
-    def __init__(self, port, host=SERVER_HOST, action='login'):
-        self.action = action
+    def __init__(self, port, host=SERVER_HOST):
         self.connected = False
         self.host = host
         self.port = port
@@ -34,19 +33,32 @@ class ChatClient():
 
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock = self.context.wrap_socket(
-                self.sock, server_hostname=host)
+            self.sock = self.context.wrap_socket(self.sock, server_hostname=host)
             
             self.sock.connect((host, self.port))
             print(f'Now connected to chat server@ port {self.port}')
             self.connected = True
-
-            if self.action == 'register':
+            
+            action = input("Would you like to register or login? (register/login): ").strip().lower()
+            if action =='register':
                 print("Registration")
                 self.register()
-            elif self.action == 'login':
+                login_choice = input("Would you like to login in now? (yes/no): ").strip().lower()
+                if login_choice == 'yes':
+                    self.login()
+                else:
+                    print("Exiting without loggin in.")
+                    self.cleanup()
+                    sys.exit(0)
+
+            elif action == 'login':
                 print("Login")
                 self.login()
+            
+            else:
+                print("Invalid action. Exiting.")
+                self.cleanup()
+                sys.exit(0)
 
         except socket.error as e:
             print(f'Failed to connect to chat server @ port {self.port}')
@@ -75,20 +87,29 @@ class ChatClient():
 
             if response == "SUCCESS":
                 print("Login successful.")
-                break
+                send_msg = input("Would you like to send a message? (yes/no): ")
+                if send_msg == 'yes':
+                    self.prompt = f'{self.name}(me): '
+                    threading.Thread(target=get_and_send, args=(self,)).start()
+                    return
+
             else:
-                print("Failed: Invalid credentials. Please try again.")
-            
-            if input("Do you want to try again? (yes/no): ").lower() != "yes":
-                self.cleanup()
-                sys.exit(0)
-        
-        if input("Would you like to send message? (yes/no): ").lower() != "yes":
+                print("Failed: Invalid credentials.")
+                # if input("Do you want to try again? (yes/no): ").lower() != "yes":
+                #     self.cleanup()
+                #     sys.exit(0)
+                # else:
+                #     continue
+
             self.cleanup()
             sys.exit(0)
+        
+        # if input("Would you like to send message? (yes/no): ").lower() != "yes":
+        #     self.cleanup()
+        #     sys.exit(0)
 
-        self.prompt = f'{self.name}(me): '
-        threading.Thread(target=get_and_send, args=(self,)).start()
+        # self.prompt = f'{self.name}(me): '
+        # threading.Thread(target=get_and_send, args=(self,)).start()
 
 
     def cleanup(self):
@@ -125,11 +146,9 @@ class ChatClient():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--action', action="store", dest="action", choices=['register', 'login'], required=True)
-    parser.add_argument('--port', action="store", dest="port", type=int, required=True)
+    parser.add_argument('--port', dest="port", type=int, required=True)
     given_args = parser.parse_args()
     port = given_args.port
-    action = given_args.action
 
-    client = ChatClient(port=port, action=action)
+    client = ChatClient(port=port)
     client.run()

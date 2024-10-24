@@ -96,21 +96,19 @@ class ChatServer(object):
                     elif action == "LOGIN":
                         if self.authenticate_user(username, password):
                             send(client, "SUCCESS")
+                            self.clients += 1
+                            inputs.append(client)
+                            self.clientmap[client] = (address, username)
+
+                            # Send joining information to other clients
+                            msg = f'\n(Connected: New client ({self.clients}) from {self.get_client_name(client)})'
+                            for output in self.outputs:
+                                send(output, msg)
+                            self.outputs.append(client)
                         else:
                             send(client, "Failed: Invalid credentials")
                             client.close()
                             continue
-
-                    # Client successfully authenticated or registered
-                    self.clients += 1
-                    inputs.append(client)
-                    self.clientmap[client] = (address, username)
-
-                    # Send joining information to other clients
-                    msg = f'\n(Connected: New client ({self.clients}) from {self.get_client_name(client)})'
-                    for output in self.outputs:
-                        send(output, msg)
-                    self.outputs.append(client)
 
                 else:
                     try:
@@ -119,7 +117,7 @@ class ChatServer(object):
                             # Send as new client's message...
                             # msg = f'\n{self.get_client_name(sock)}: {data}'
                             msg = f'\n{self.clientmap[sock][1]}: {data}'
-                            
+
                             # Send data to all except ourself
                             for output in self.outputs:
                                 if output != sock:
