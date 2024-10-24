@@ -87,9 +87,7 @@ class ChatClient():
             self.cleanup()
             sys.exit(0)
 
-        data = receive(self.sock)
-        addr = data.split('CLIENT: ')[1]
-        self.prompt = '[' + '@'.join((self.name, addr)) + ']> '
+        self.prompt = f'{self.name}(me): '
         threading.Thread(target=get_and_send, args=(self,)).start()
 
 

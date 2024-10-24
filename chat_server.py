@@ -103,7 +103,6 @@ class ChatServer(object):
 
                     # Client successfully authenticated or registered
                     self.clients += 1
-                    send(client, f'CLIENT: {str(address[0])}')
                     inputs.append(client)
                     self.clientmap[client] = (address, username)
 
@@ -118,8 +117,9 @@ class ChatServer(object):
                         data = receive(sock)
                         if data:
                             # Send as new client's message...
-                            msg = f'\n#[{self.get_client_name(sock)}]>> {data}'
-
+                            # msg = f'\n{self.get_client_name(sock)}: {data}'
+                            msg = f'\n{self.clientmap[sock][1]}: {data}'
+                            
                             # Send data to all except ourself
                             for output in self.outputs:
                                 if output != sock:
