@@ -56,9 +56,10 @@ class ChatServer:
     """ Chat server implementation using select for handling multiple clients. """
 
     def __init__(self, port, backlog=5):
+        """ Initialize the server with the given port and backlog. """
+        # Initialize client map and output map
         self.clientmap = {}
-        self.authorised_outputs = []
-        self.unauthorised_outputs = []
+        self.outputs = {} 
 
         # Configure SSL context
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -80,8 +81,8 @@ class ChatServer:
     def sig_handler(self, *args):
         """ Handles server shutdown by closing all client connections. """
         print('Shutting down server...')
-        for output in self.authorised_outputs:
-            output.close()
+        for client in self.clientmap.keys():
+            client.close()
         self.server.close()
 
     def get_client_name(self, client):
@@ -95,11 +96,12 @@ class ChatServer:
 
         while running:
             try:
-                readable, writeable, exceptional = select.select(inputs, self.authorised_outputs, [])
+                readable, writeable, exceptional = select.select(inputs, [], [])
             except select.error:
                 break
 
             for sock in readable:
+                sys.stdout.flush()
                 if sock == self.server:
                     # Accept a new connection
                     client, address = self.server.accept()
@@ -107,22 +109,23 @@ class ChatServer:
                     # Add the client to the inputs list
                     self.clientmap[client] = (address, None)
                     inputs.append(client)
-                    self.unauthorised_outputs.append(client)
+                    # New clients are unauthorized by default
+                    self.outputs[client] = False
                 else:
                     try:
                         data = receive(sock)
-                        if sock not in self.unauthorised_outputs:
-                            # Handle authorised clients
+                        if self.outputs.get(sock):
+                            # Handle authorized clients
                             if data:
                                 msg = f'{self.get_client_name(sock)}: {data}'
-                                for output in self.authorised_outputs:
-                                    if output != sock:
+                                for output in inputs:
+                                    if output != sock and self.outputs.get(output):
                                         send(output, msg)
                             else:
                                 print(f'Chat server: {sock.fileno()} hung up')
                                 self.remove_client(sock, inputs)
                         else:
-                            # Handle unauthorised clients
+                            # Handle unauthorized clients
                             self.handle_unauthorised(sock, data, inputs)
                     except socket.error:
                         self.remove_client(sock, inputs)
@@ -134,15 +137,12 @@ class ChatServer:
         """ Removes a client socket from the server and closes its connection. """
         if sock in inputs:
             inputs.remove(sock)
-        if sock in self.authorised_outputs:
-            self.authorised_outputs.remove(sock)
-        elif sock in self.unauthorised_outputs:
-            self.unauthorised_outputs.remove(sock)
+        if sock in self.outputs:
+            del self.outputs[sock]
         sock.close()
 
     def handle_unauthorised(self, sock, data, inputs):
-        """ Handles login and registration requests for unauthorised sockets. """
-        # Check if the client has hung up
+        """ Handles login and registration requests for unauthorized sockets. """
         if not data:
             print(f'Chat client: {sock.fileno()} hung up')
             self.remove_client(sock, inputs)
@@ -167,10 +167,11 @@ class ChatServer:
             send(sock, 'Log In Success')
             self.clientmap[sock] = (self.clientmap[sock][0], username)
             msg = f'[Server: {self.get_client_name(sock)} joined the chat]'
-            for output in self.authorised_outputs:
-                send(output, msg)
-            self.authorised_outputs.append(sock)
-            self.unauthorised_outputs.remove(sock)
+            for output in self.outputs:
+                if self.outputs.get(output):
+                    send(output, msg)
+            # Mark client as authorized
+            self.outputs[sock] = True
 
     def process_registration(self, sock, data):
         """ Processes user registration requests and sends a success message if successful. """
@@ -184,11 +185,9 @@ class ChatServer:
         if registrate(username, password.strip()):
             send(sock, 'Registration Success')
         else:
-            send(sock, 'Registraion Failed: Username has already been taken')
-
+            send(sock, 'Registration Failed: Username has already been taken')
 
 if __name__ == "__main__":
-    # Parse command line arguments
     parser = argparse.ArgumentParser(description='Socket Server Example with Select')
     parser.add_argument('--port', required=True, type=int, help='Port to listen on')
 

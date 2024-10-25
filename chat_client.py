@@ -1,16 +1,15 @@
-import warnings
 import select
 import sys
 import argparse
 import threading
 import ssl
 import socket
+import warnings
 
 from utils import *
 
 # Default server host
 SERVER_HOST = 'localhost'
-# Global flag to stop threads when necessary
 stop_thread = False
 
 # Suppress Deprecation Warnings for the SSL version
@@ -73,14 +72,17 @@ class ChatClient:
 
         try:
             # Connect to a secure socket
-            self.sock = self.context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_hostname=host)
-            self.sock.connect((host, port))
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock = self.context.wrap_socket(
+                self.sock, server_hostname=host)
+
+            self.sock.connect((host, self.port))
             self.connected = True
             print(f'Connected to chat server @ port {self.port}\n')
 
             # Perform authentication
             self.authenticate()
-            self.prompt = f'{self.name}(me): '
+            self.prompt = f'{self.name} (me): '
 
             # Start a new thread to handle sending messages
             threading.Thread(target=get_and_send, args=(self,)).start()
@@ -101,14 +103,16 @@ class ChatClient:
                 name, password = registrate()
                 send(self.sock, f'REGISTRATION: {name} {password}')
                 data = receive(self.sock)
-                print(f'\n{data}')
+                sys.stdout.write(f'{data}\n')
+                sys.stdout.flush()
 
             elif option == '2':
                 # Login option
                 name, password = login()
                 send(self.sock, f'LOGIN: {name} {password}')
                 data = receive(self.sock)
-                print(f'\n{data}\n')
+                sys.stdout.write(f'\n{data}\n')
+                sys.stdout.flush()
                 # Check if the login was successful and set the authenticated flag
                 if data == 'Log In Success':
                     authenticated = True
@@ -119,6 +123,7 @@ class ChatClient:
                 print("\nExiting...")
                 self.sock.close()
                 sys.exit(0)
+
             else:
                 # Invalid option
                 print("Invalid option. Please enter 1, 2 or 3.")
@@ -129,7 +134,6 @@ class ChatClient:
 
     def run(self):
         """ Main client loop that listens for server messages and processes them. """
-        global stop_thread
         while self.connected:
             try:
                 sys.stdout.write(self.prompt)
@@ -143,8 +147,9 @@ class ChatClient:
                         if not data:
                             print('\nClient shutting down.')
                             self.connected = False
+                            break
                         else:
-                            sys.stdout.write(data + '\n')
+                            sys.stdout.write("\n" + data + "\n")
                             sys.stdout.flush()
 
             except KeyboardInterrupt:
