@@ -6,6 +6,7 @@ import argparse
 import ssl
 import warnings
 import socket
+import hashlib
 
 from utils import *
 
@@ -15,6 +16,11 @@ SERVER_HOST = 'localhost'
 
 # Suppress SSL deprecation warning
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+def hash_password(password):
+    """ Returns the SHA-256 hash of the password. """
+    return hashlib.sha256(password.encode()).hexdigest()
+
 
 def registrate(username, password):
     """ Registers a new user if the username doesn't already exist in the user file. """
@@ -29,7 +35,7 @@ def registrate(username, password):
         return False
 
     # Add the new user to the user file
-    users[username] = password
+    users[username] = hash_password(password)
     with open(USER_FILE, 'w') as file:
         json.dump(users, file)
     return True
@@ -46,7 +52,7 @@ def login(username, password, client):
         return False
 
     # Check if the username and password match
-    if username not in users or users[username] != password:
+    if username not in users or users[username] != hash_password(password):
         send(client, 'Log In Failed: No users found' if username not in users else 'Log In Failed: Password does not match the username')
         return False
     return True
