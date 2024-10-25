@@ -17,12 +17,12 @@ To install and run this program, ensure you have Python 3.7.4 or higher installe
 2. Navigate to the directory containing your script
 3. Start the server by running the following command, replacing <port> with the desired port number:
     ```bash
-    python chat_server.py --port <port>
+    python3 chat_server.py --port <port>
     ```
 
     Example:
     ```bash
-    python chat_server.py --port 9988
+    python3 chat_server.py --port 9988
     ```
 
 ### Starting the Chat Client
@@ -30,12 +30,12 @@ To install and run this program, ensure you have Python 3.7.4 or higher installe
 2. Navigate to the directory containing your script.
 3. Start the client by running the following command, using the same port number as the server:
     ```bash
-    python chat_client.py --port <port>
+    python3 chat_client.py --port <port>
     ```
 
     Example:
     ```bash
-    python chat_client.py --port 9988
+    python3 chat_client.py --port 9988
     ```
 
 ### User Registration and Login
